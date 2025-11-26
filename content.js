@@ -281,7 +281,7 @@
                     alert('動画IDが取得できませんでした。YouTube Music の再生画面で実行してください。');
                     return;
                 }
-                const githubUrl = `https://github.com/LRCCloud/${vid}/edit/main/README.md`;
+                const githubUrl = `https://github.com/LRCHub/${vid}/edit/main/README.md`;
                 window.open(githubUrl, '_blank');
             }
         });
