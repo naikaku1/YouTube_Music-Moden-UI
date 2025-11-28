@@ -298,7 +298,6 @@
                     alert('動画IDが取得できませんでした。YouTube Music の再生画面で実行してください。');
                     return;
                 }
-                // DynamicLyrics.json 直接編集（※ここはブラウザで GitHub を開くだけ。拡張からの直接 fetch は行っていません）
                 const githubUrl = `https://github.com/LRCHub/${vid}/edit/main/README.md`;
                 window.open(githubUrl, '_blank');
             }
@@ -360,10 +359,7 @@
             dangerBtn.addEventListener('click', (ev) => {
                 ev.stopPropagation();
                 if (currentKey) {
-                    // ★ ストレージのキャッシュを削除（歌詞あり／なしセンチネル問わず）
                     storage.remove(currentKey);
-
-                    // ★ currentKey は維持する（ここで null にしない）
                     lyricsData = [];
                     dynamicLines = null;
                     renderLyrics([]);
@@ -589,14 +585,11 @@
                 const tBase = baseLine.time;
                 const baseTextRaw = (baseLine.text ?? '');
 
-                // ★ 原文が空文字（timestamp だけ）の行は、
-                //    翻訳も必ず空行にする（詰めてずらさない）
                 if (baseTextRaw.trim() === '') {
                     res[i] = '';
                     continue;
                 }
 
-                // timestamp なし（time: null）の行は、同じ index を優先
                 if (typeof tBase !== 'number') {
                     const cand = arr[i];
                     if (cand && typeof cand.text === 'string') {
@@ -607,7 +600,6 @@
                     continue;
                 }
 
-                // timestamp ありの行は、近い時間の行を探す
                 while (
                     j < arr.length &&
                     typeof arr[j].time === 'number' &&
@@ -625,7 +617,7 @@
                     const trimmed = raw.trim();
                     res[i] = trimmed === '' ? '' : trimmed;
                 } else {
-                    res[i] = null; // 本当にマッチする行が無い
+                    res[i] = null;
                 }
             }
 
@@ -709,7 +701,6 @@
             if (!arr) return baseText;
 
             const v = arr[index];
-            // null / undefined の場合だけ元歌詞にフォールバック
             return (v === null || v === undefined) ? baseText : v;
         };
 
@@ -739,7 +730,6 @@
         return final;
     }
 
-    // ★ 歌詞読み込み（キャッシュ + 歌詞なしセンチネル対応）
     async function loadLyrics(meta) {
         if (!config.deepLKey) config.deepLKey = await storage.get('ytm_deepl_key');
         const cachedTrans = await storage.get('ytm_trans_enabled');
@@ -749,29 +739,20 @@
         if (mainLangStored) config.mainLang = mainLangStored;
         if (subLangStored !== null && subLangStored !== undefined) config.subLang = subLangStored;
 
-        // この loadLyrics 呼び出し時点でのキーを固定しておく
         const thisKey = `${meta.title}///${meta.artist}`;
-
-        // もし tick 側の currentKey と食い違っていたら何もしない
         if (thisKey !== currentKey) return;
 
-        // ★ キャッシュ読み込み
         let cached = await storage.get(thisKey);
         dynamicLines = null;
         let data = null;
         let noLyricsCached = false;
 
         if (cached !== null && cached !== undefined) {
-            // ① 歌詞なしセンチネル
             if (cached === NO_LYRICS_SENTINEL) {
                 noLyricsCached = true;
-            }
-            // ② 旧形式（文字列のみ）
-            else if (typeof cached === 'string') {
+            } else if (typeof cached === 'string') {
                 data = cached;
-            }
-            // ③ 新形式 { lyrics, dynamicLines, noLyrics }
-            else if (typeof cached === 'object') {
+            } else if (typeof cached === 'object') {
                 if (typeof cached.lyrics === 'string') {
                     data = cached.lyrics;
                 }
@@ -784,17 +765,14 @@
             }
         }
 
-        // すでに「この曲は歌詞なし」と判定済み → API 叩かずそのまま空表示
         if (!data && noLyricsCached) {
             if (thisKey !== currentKey) return;
             renderLyrics([]);
             return;
         }
 
-        // ★ まだ一度も取得していない場合だけ API へ
         if (!data && !noLyricsCached) {
             let gotLyrics = false;
-
             try {
                 const track = meta.title.replace(/\s*[\(-\[].*?[\)-]].*/, "");
                 const artist = meta.artist;
@@ -813,12 +791,9 @@
                 if (res?.success && typeof res.lyrics === 'string' && res.lyrics.trim()) {
                     data = res.lyrics;
                     gotLyrics = true;
-
                     if (Array.isArray(res.dynamicLines) && res.dynamicLines.length) {
                         dynamicLines = res.dynamicLines;
                     }
-
-                    // ★ まだ同じ曲を見ている場合だけキャッシュに保存
                     if (thisKey === currentKey) {
                         if (dynamicLines) {
                             storage.set(thisKey, {
@@ -827,7 +802,6 @@
                                 noLyrics: false
                             });
                         } else {
-                            // 従来形式（互換性のため文字列だけ保存）
                             storage.set(thisKey, data);
                         }
                     }
@@ -838,23 +812,19 @@
                 console.warn('Lyrics API fetch failed', e);
             }
 
-            // 一度試したが歌詞が取れなかった → センチネルを保存
             if (!gotLyrics && thisKey === currentKey) {
                 storage.set(thisKey, NO_LYRICS_SENTINEL);
                 noLyricsCached = true;
             }
         }
 
-        // 途中で曲が切り替わっていたら何もしない
         if (thisKey !== currentKey) return;
 
-        // ここまで来て data が無ければ「歌詞なし」を表示
         if (!data) {
             renderLyrics([]);
             return;
         }
 
-        // ここから先は従来通り：パース → 翻訳 → レンダリング
         let parsed = parseBaseLRC(data);
         const videoUrl = getCurrentVideoUrl();
         let finalLines = parsed;
@@ -872,15 +842,17 @@
     function renderLyrics(data) {
         if (!ui.lyrics) return;
         ui.lyrics.innerHTML = '';
-        // レンダリング時に確実にスクロール位置をリセット
         ui.lyrics.scrollTop = 0;
 
-        const hasData = Array.isArray(data) && data.length > 0;
-        document.body.classList.toggle('ytm-no-lyrics', !hasData);
+        // ★ 空行を除いた、有効な行があるかどうかを判定
+        const hasVisibleText = Array.isArray(data) && data.some(l => l.text && l.text.trim());
+        
+        document.body.classList.toggle('ytm-no-lyrics', !hasVisibleText);
         document.body.classList.toggle('ytm-has-timestamp', hasTimestamp);
         document.body.classList.toggle('ytm-no-timestamp', !hasTimestamp);
 
-        if (!hasData) {
+        // ★ 有効な行がなければ「歌詞なし」扱い
+        if (!hasVisibleText) {
             const meta = getMetadata();
             const title = meta?.title || '';
             const artist = meta?.artist || '';
@@ -895,9 +867,9 @@
                 : base;
 
             ui.lyrics.innerHTML = `
-                <div class="no-lyrics-message" style="padding:20px; opacity:0.8;">
+                <div class="no-lyrics-message">
                     <p>${infoText}</p>
-                    <p style="margin-top:8px;">
+                    <p style="margin-top:20px; font-size: 14px; opacity: 0.8;">
                         <a href="${lrchubManualUrl}"
                            target="_blank"
                            rel="noopener noreferrer">
@@ -911,6 +883,10 @@
 
         data.forEach((line, index) => {
             const row = createEl('div', '', 'lyric-line');
+            if (!line.text || !line.text.trim()) {
+                row.classList.add('empty-line');
+            }
+            
             const mainSpan = createEl('span', '', 'lyric-main');
 
             const dyn = dynamicLines && dynamicLines[index];
@@ -1017,7 +993,6 @@
                     r.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
 
-                // ★ Apple Music っぽく、アクティブ行だけ 1文字ずつハイライトを進める
                 if (dynamicLines && dynamicLines[i] && Array.isArray(dynamicLines[i].chars)) {
                     const charSpans = r.querySelectorAll('.lyric-char');
                     charSpans.forEach(sp => {
@@ -1086,10 +1061,8 @@
         const key = `${meta.title}///${meta.artist}`;
         if (currentKey !== key) {
             currentKey = key;
-            // 歌詞データをクリアして、前の曲の歌詞に基づいたスクロールが発生しないようにする
             lyricsData = [];
             updateMetaUI(meta);
-            // スクロール位置を一番上にリセットする
             if (ui.lyrics) ui.lyrics.scrollTop = 0;
             loadLyrics(meta);
         }
@@ -1102,13 +1075,11 @@
             ui.artwork.innerHTML = `<img src="${meta.src}" crossorigin="anonymous">`;
             ui.bg.style.backgroundImage = `url(${meta.src})`;
         }
-        ui.lyrics.innerHTML = '<div style="opacity:0.5; padding:20px;">Loading...</div>';
+        // ★ くっきり表示クラスを使用
+        ui.lyrics.innerHTML = '<div class="lyric-loading">Loading...</div>';
     }
 
-    // === 起動処理 ===
     console.log("YTM Immersion loaded.");
     setInterval(tick, 1000);
-
-    // 歌詞ハイライトの RAF ループ開始（1回だけ）
     startLyricRafLoop();
 })();
