@@ -450,6 +450,22 @@ tp-yt-paper-icon-button[aria-label*="menu"] {
   order: 24;
 }
 
+body:not(.ytm-custom-layout) ytmusic-player-bar .right-controls {
+    display: flex !important;
+    align-items: center !important;
+}
+
+body:not(.ytm-custom-layout) ytmusic-player-bar .right-controls #my-mode-toggle {
+    order: 99 !important;
+    margin-right: 10px !important;
+}
+
+body:not(.ytm-custom-layout) ytmusic-player-bar .right-controls .expand-btn,
+body:not(.ytm-custom-layout) ytmusic-player-bar .right-controls tp-yt-paper-icon-button.expand-btn,
+body:not(.ytm-custom-layout) ytmusic-player-bar .right-controls .toggle-player-page-button {
+    order: 100 !important;
+}
+
 /* === アップロードメニュー（グラス UI） === */
 .ytm-upload-menu {
     position: absolute;
@@ -630,4 +646,43 @@ body.ytm-custom-layout.ytm-no-timestamp .lyric-line {
 body.ytm-custom-layout ytmusic-popup-container,
 body.ytm-custom-layout ytmusic-popup-container tp-yt-iron-dropdown {
     z-index: 3000 !important;
+}
+
+/* 通常時 (body:not(.ytm-custom-layout)) のバー設定 */
+body:not(.ytm-custom-layout) ytmusic-player-bar {
+  /* 透明感とガラス効果 */
+  background: rgba(20,20,20,0.4) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  
+  /* 角丸と浮遊位置 */
+  border-radius: 16px !important;
+  bottom: 12px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 98% !important;
+  max-width: 1400px !important;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6) !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  overflow: visible !important;
+}
+
+body:not(.ytm-custom-layout) ytmusic-player-bar tp-yt-paper-slider#progress-bar {
+    position: absolute !important;
+    top: -5px !important;
+    left: -5px !important;
+    width: calc(98% + 5px) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: 20px !important;
+    z-index: 10 !important;
+}
+
+body:not(.ytm-custom-layout) #player-bar-background {
+    display: none !important;
+}
+
+body:not(.ytm-custom-layout) ytmusic-player-bar #background {
+    display: none !important;
 }
