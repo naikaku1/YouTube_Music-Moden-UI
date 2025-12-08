@@ -52,5 +52,33 @@
     "settings_save": "Save",
     "settings_reset": "Reset",
     "settings_saved": "Saved"
-  }
+  },
+  "zh": {
+  "unit_hour": "小时",
+  "unit_minute": "分钟",
+  "unit_second": "秒",
+  "replay_playTime": "总播放时间",
+  "replay_plays": "次播放",
+  "replay_topSong": "最常听的歌曲",
+  "replay_topArtist": "最常听的艺人",
+  "replay_obsession": "最近上头",
+  "replay_ranking": "播放排行",
+  "replay_today": "今天",
+  "replay_week": "本周",
+  "replay_all": "全部时间",
+  "replay_empty": "还没有播放任何音乐…",
+  "replay_no_data_sub": "播放一些音乐来查看统计",
+  "replay_reset_confirm": "确定要清除所有播放记录吗？\n此操作无法撤销。",
+  "replay_vibe": "你的氛围",
+  "replay_lyrics_heard": "听过的歌词",
+  "settings_title": "设置",
+  "settings_ui_lang": "界面语言",
+  "settings_trans": "启用翻译",
+  "settings_main_lang": "主语言",
+  "settings_sub_lang": "副语言",
+  "settings_save": "保存",
+  "settings_reset": "重置",
+  "settings_saved": "已保存"
+}
+
 }
