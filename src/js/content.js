@@ -34,7 +34,7 @@
         document.body.appendChild(customHandle);
       }
 
-      // 元のハンドルを非表示にするCSS
+      // 元のハンドルを非表示にするCSS（Shadow DOM内部に適用）
       const style = document.createElement('style');
       style.id = 'ytm-hide-original-handle';
       style.textContent = `
@@ -49,22 +49,37 @@
       }
 
       // 表示状態を管理
-      let isHovering = false;
-      let positionChanged = false;
+      let isHovering = false;      // カーソルがバー上にある
+      let positionChanged = false; // 位置を変更した（ドラッグした）
 
-      progressBar.addEventListener('mouseenter', () => { isHovering = true; });
-      progressBar.addEventListener('mouseleave', () => { isHovering = false; });
-      progressBar.addEventListener('mousedown', () => { positionChanged = true; });
+      // ホバー検出
+      progressBar.addEventListener('mouseenter', () => {
+        isHovering = true;
+      });
 
-      // バー以外をクリックしたら非表示（キャプチャフェーズ）
+      progressBar.addEventListener('mouseleave', () => {
+        isHovering = false;
+      });
+
+      // ドラッグ（位置変更）検出
+      progressBar.addEventListener('mousedown', () => {
+        positionChanged = true;
+      });
+
+      // バー以外をクリックしたら非表示（キャプチャフェーズで確実にキャッチ）
       document.addEventListener('click', (e) => {
         if (!progressBar.contains(e.target)) {
           positionChanged = false;
         }
       }, true);
 
-      const shouldShowHandle = () => isHovering || positionChanged;
+      // ハンドルの表示・非表示を制御
+      const shouldShowHandle = () => {
+        // ホバー中、または位置変更後（バー外クリックまで）
+        return isHovering || positionChanged;
+      };
 
+      // ハンドルの位置を更新
       const updateHandlePosition = () => {
         if (!document.body.classList.contains('ytm-custom-layout')) {
           customHandle.style.opacity = '0';
@@ -72,23 +87,29 @@
           return;
         }
 
+        // ネイティブのsliderKnobを取得
         const sliderKnob = progressBar.querySelector('#sliderKnob');
         if (!sliderKnob) {
           requestAnimationFrame(updateHandlePosition);
           return;
         }
 
+        // 表示条件をチェック
         if (!shouldShowHandle()) {
           customHandle.style.opacity = '0';
           requestAnimationFrame(updateHandlePosition);
           return;
         }
 
+        // sliderKnobのrectを取得（ドラッグ中もリアルタイムで更新される）
         const knobRect = sliderKnob.getBoundingClientRect();
         const barRect = progressBar.getBoundingClientRect();
+
+        // knobの中心位置を計算（完全追従）
         const handleX = knobRect.left + knobRect.width / 2;
         const handleY = barRect.top + barRect.height / 2;
 
+        // ハンドルを表示して位置を更新
         customHandle.style.opacity = '1';
         customHandle.style.left = handleX + 'px';
         customHandle.style.top = handleY + 'px';
@@ -97,8 +118,10 @@
       };
 
       requestAnimationFrame(updateHandlePosition);
+
     };
 
+    // DOMが準備できたら開始
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', waitForPlayerBar);
     } else {
