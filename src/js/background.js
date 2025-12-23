@@ -13,6 +13,13 @@ const SHARED_TRANSLATE_ENDPOINTS = [
   'http://immersionproject.coreone.work/api/translate/'
 ];
 
+const COMMUNITY_REMAINING_ENDPOINTS = [
+  'https://immersionproject.coreone.work/api/community/remaining',
+  'https://immersionproject.coreone.work/api/community/remaining/',
+  'http://immersionproject.coreone.work/api/community/remaining',
+  'http://immersionproject.coreone.work/api/community/remaining/',
+];
+
 
 function loadCloudState() {
   return new Promise((resolve) => {
@@ -475,6 +482,24 @@ const withTimeout = (promise, ms, label) => {
     }),
   ]);
 };
+async function fetchCommunityRemaining() {
+  let lastErr = null;
+  for (const url of COMMUNITY_REMAINING_ENDPOINTS) {
+    try {
+      const res = await withTimeout(fetch(url, { method: 'GET', cache: 'no-store' }), 20000, 'community remaining timeout');
+      if (!res.ok) {
+        const msg = await res.text().catch(() => res.statusText);
+        throw new Error(`community remaining failed: ${res.status} ${msg}`);
+      }
+      const data = await res.json().catch(() => null);
+      if (!data || typeof data !== 'object') throw new Error('community remaining: invalid json');
+      return data;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('community remaining failed');
+}
 
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
   if (!req || typeof req !== 'object' || !req.type) {
@@ -521,6 +546,18 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     })();
     return true;
   }
+  if (req.type === 'GET_COMMUNITY_REMAINING') {
+    (async () => {
+      try {
+        const data = await fetchCommunityRemaining();
+        sendResponse({ ok: true, data });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e && e.message ? e.message : e) });
+      }
+    })();
+    return true;
+  }
+
 
   if (req.type === 'SYNC_HISTORY') {
     const history = Array.isArray(req.history) ? req.history : (req.payload && Array.isArray(req.payload.history) ? req.payload.history : []);

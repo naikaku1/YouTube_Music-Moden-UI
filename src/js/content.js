@@ -2209,7 +2209,7 @@
       if (!segmentsToTranslate.length) return null;
       const res = await new Promise(resolve => {
         chrome.runtime.sendMessage(
-          { type: 'TRANSLATE', payload: { text: segmentsToTranslate, apiKey: config.deepLKey, targetLang, useSharedTranslateApi: config.useSharedTranslateApi } },
+          { type: 'TRANSLATE', payload: { text: segmentsToTranslate, apiKey: config.deepLKey, targetLang, useSharedTranslateApi: (config.useSharedTranslateApi && !config.fastMode) } },
           resolve
         );
       });
@@ -2252,7 +2252,7 @@
   };
 
   const translateTo = async (lines, langCode) => {
-    if ((!config.deepLKey && !config.useSharedTranslateApi) || !lines.length) return null;
+    if ((!config.deepLKey && !(config.useSharedTranslateApi && !config.fastMode)) || !lines.length) return null;
     const targetLang = resolveDeepLTargetLang(langCode);
     try {
       const baseTexts = lines.map(l => (l && l.text !== undefined && l.text !== null) ? String(l.text) : '');
@@ -2272,7 +2272,7 @@
       if (requestTexts.length) {
         const res = await new Promise(resolve => {
           chrome.runtime.sendMessage(
-            { type: 'TRANSLATE', payload: { text: requestTexts, apiKey: config.deepLKey, targetLang, useSharedTranslateApi: config.useSharedTranslateApi } },
+            { type: 'TRANSLATE', payload: { text: requestTexts, apiKey: config.deepLKey, targetLang, useSharedTranslateApi: (config.useSharedTranslateApi && !config.fastMode) } },
             resolve
           );
         });
@@ -2418,7 +2418,7 @@
       }
     });
 
-    if (needDeepL.length && (config.deepLKey || config.useSharedTranslateApi)) {
+    if (needDeepL.length &&  (config.deepLKey || (config.useSharedTranslateApi && !config.fastMode)) ) {
       for (const lang of needDeepL) {
         const translatedTexts = await translateTo(baseLines, lang);
         if (translatedTexts && translatedTexts.length === baseLines.length) {
@@ -2916,7 +2916,133 @@
   }
 
 
-  function renderSettingsPanel() {
+    // ===== 共有翻訳: 残り文字数表示 =====
+  const COMMUNITY_REMAINING_TTL_MS = 60 * 1000; // 60s
+  let communityRemainingCache = { ts: 0, data: null, error: null };
+  let communityRemainingTimer = null;
+
+  // Fast Mode のときに共有翻訳を強制OFFにするための一時退避
+  let sharedTransBeforeFast = null;
+
+  function ensureCommunityRemainingTimer() {
+    if (communityRemainingTimer) return;
+    communityRemainingTimer = setInterval(() => {
+      try {
+        // 設定パネルが開いているときだけ更新（無駄な通信を減らす）
+        if (ui.settings && ui.settings.classList.contains('active')) {
+          updateCommunityRemainingUI(false);
+        }
+      } catch (_) { }
+    }, 60 * 1000);
+  }
+
+  async function getCommunityRemaining(force = false) {
+    const now = Date.now();
+    if (!force && communityRemainingCache.data && (now - communityRemainingCache.ts) < COMMUNITY_REMAINING_TTL_MS) {
+      return communityRemainingCache.data;
+    }
+
+    if (!EXT || !EXT.runtime || typeof EXT.runtime.sendMessage !== 'function') {
+      throw new Error('extension runtime is not available');
+    }
+
+    const resp = await new Promise((resolve) => {
+      try {
+        EXT.runtime.sendMessage({ type: 'GET_COMMUNITY_REMAINING' }, (r) => resolve(r));
+      } catch (e) {
+        resolve(null);
+      }
+    });
+
+    if (!resp || !resp.ok) {
+      const msg = resp && resp.error ? resp.error : 'failed';
+      communityRemainingCache = { ts: now, data: null, error: msg };
+      throw new Error(msg);
+    }
+
+    const data = resp.data || resp.remaining || resp;
+    communityRemainingCache = { ts: now, data, error: null };
+    return data;
+  }
+
+  async function updateCommunityRemainingUI(force = false) {
+    const valEl = document.getElementById('community-remaining-val');
+        if (!valEl) return;
+
+    // 初回だけ「取得中…」
+    if (!valEl.textContent || valEl.textContent === '--') {
+      valEl.textContent = '取得中…';
+    }
+
+    try {
+      const data = await getCommunityRemaining(force);
+
+      const remaining =
+        (data && (data.total_remaining ?? data.totalRemaining ?? data.total_remaining_total ?? data.total ?? data.free_remaining_total)) ?? null;
+
+      if (remaining != null && !Number.isNaN(Number(remaining))) {
+        valEl.textContent = Number(remaining).toLocaleString();
+      } else {
+        valEl.textContent = '--';
+      }
+
+      // 生データは hover で見れるように
+      try {
+        valEl.title = JSON.stringify(data, null, 2);
+      } catch (_) { }
+    } catch (e) {
+      valEl.textContent = '--';
+      valEl.title = e && e.message ? e.message : String(e);
+    }
+  }
+
+  function updateSharedTransAvailability() {
+    const fastToggle = document.getElementById('fast-mode-toggle');
+    const sharedToggle = document.getElementById('shared-trans-toggle');
+    const row = document.getElementById('shared-trans-row');
+    const note = document.getElementById('shared-trans-note');
+    if (!fastToggle || !sharedToggle) return;
+
+    const fastMode = !!fastToggle.checked;
+
+    // note テキスト（翻訳キーが無い場合は日本語フォールバック）
+    const disabledText = (typeof t === 'function' ? t('settings_shared_trans_disabled_fast') : '') ||
+      "高速読み込みモードが有効な場合、API共有翻訳は使用できません。\\n高速読み込みモードでは翻訳結果の共有が行われないため、API使用量を節約する目的で無効化しています。ご了承ください。";
+
+    if (fastMode) {
+      if (sharedTransBeforeFast === null) sharedTransBeforeFast = !!sharedToggle.checked;
+
+      sharedToggle.checked = false;
+      sharedToggle.disabled = true;
+
+      if (row) row.style.opacity = '0.55';
+      if (note) {
+        note.style.display = 'block';
+        note.textContent = disabledText;
+      }
+
+      // 強制OFFを config / storage に反映
+      config.useSharedTranslateApi = false;
+      storage.set('ytm_shared_trans_enabled', false);
+    } else {
+      sharedToggle.disabled = false;
+      if (row) row.style.opacity = '1';
+      if (note) {
+        note.style.display = 'none';
+        note.textContent = '';
+      }
+
+      // 直前に Fast Mode で潰した分を復元（必要なら）
+      if (sharedTransBeforeFast !== null) {
+        sharedToggle.checked = !!sharedTransBeforeFast;
+        config.useSharedTranslateApi = !!sharedTransBeforeFast;
+        storage.set('ytm_shared_trans_enabled', config.useSharedTranslateApi);
+        sharedTransBeforeFast = null;
+      }
+    }
+  }
+
+function renderSettingsPanel() {
     if (!ui.settings) return;
 
     // 現在の曲IDがあるか確認（キャッシュ削除ボタンの制御用）
@@ -2976,11 +3102,21 @@
               </label>
             </div>
 
-            <div class="setting-row">
-              <label class="toggle-label" style="width:100%;">
+                        <div class="setting-row" id="shared-trans-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+              <label class="toggle-label" style="width:100%; display:flex; justify-content:space-between; align-items:center;">
                 <span>${t('settings_shared_trans')}</span>
-                <input type="checkbox" id="shared-trans-toggle">
+                <input type="checkbox" id="shared-trans-toggle" style="transform:scale(1.15);">
               </label>
+              <div id="shared-trans-note" style="font-size:11px; opacity:0.7; line-height:1.35; display:none; white-space:pre-line;"></div>
+
+              <div style="width:100%; display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                <span style="font-size:12px; opacity:0.85;">共有翻訳 残り文字数</span>
+                <span id="community-remaining-val" style="font-size:12px; opacity:0.75;">--</span>
+              </div>
+              <div style="font-size:11px; opacity:0.65; line-height:1.35;">
+                <a href="https://immersionproject.coreone.work/" target="_blank" rel="noopener noreferrer"
+                   style="color:#8ab4ff; text-decoration:none;">文字数の提供</a> をお願いします
+              </div>
             </div>
 
              <div class="setting-row" style="flex-wrap:wrap; gap:10px;">
@@ -3061,6 +3197,18 @@
     document.getElementById('trans-toggle').checked = config.useTrans;
     document.getElementById('fast-mode-toggle').checked = !!config.fastMode;
     document.getElementById('shared-trans-toggle').checked = !!config.useSharedTranslateApi;
+    // Fast Mode のときは共有翻訳を強制OFF（トグルは表示したまま無効化）
+    const fastToggleEl = document.getElementById('fast-mode-toggle');
+    if (fastToggleEl) {
+      fastToggleEl.addEventListener('change', () => {
+        updateSharedTransAvailability();
+      });
+    }
+    updateSharedTransAvailability();
+
+    // 共有翻訳の残り文字数（保存済み値を表示）
+    updateCommunityRemainingUI(true);
+    ensureCommunityRemainingTimer();
     document.getElementById('sync-offset-input').valueAsNumber = config.syncOffset || 0;
     document.getElementById('sync-offset-save-toggle').checked = config.saveSyncOffset;
 
